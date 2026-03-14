@@ -1,6 +1,6 @@
 name: Build AntiDropshot Plugin
 
-on: [push, pull_request]
+on: [push]
 
 jobs:
   build:
@@ -15,9 +15,11 @@ jobs:
       uses: microsoft/setup-msbuild@v2
 
     - name: Restore NuGet Packages
+      # Здесь должно быть имя вашего актуального .csproj файла
       run: nuget restore AntiDropshot.csproj
 
     - name: Build
+      # Указываем правильный файл проекта для сборки
       run: msbuild AntiDropshot.csproj /p:Configuration=Release /p:TargetFramework=net48
 
     - name: Upload DLL
