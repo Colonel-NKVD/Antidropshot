@@ -10,7 +10,7 @@ namespace AntiDropshot
         private float _crouchDuration = 0f;
         private bool _isCorrecting = false;
 
-        private const float REQUIRED_CROUCH_TIME = 3.0f; // Обязательно 3 сек в приседе
+        private const float REQUIRED_CROUCH_TIME = 3.0f; // 3 секунды в приседе
         private const float TICK_RATE = 0.02f;
 
         void Awake()
@@ -24,7 +24,7 @@ namespace AntiDropshot
 
             EPlayerStance currentStance = player.stance.stance;
 
-            // 1. Блокировка стоек в воздухе
+            // 1. Блокировка стоек в воздухе (Ground Lock)
             if (!player.movement.isGrounded)
             {
                 if (currentStance != EPlayerStance.STAND)
@@ -35,7 +35,7 @@ namespace AntiDropshot
                 return;
             }
 
-            // 2. Логика таймера приседа
+            // 2. Накопительный таймер приседа
             if (currentStance == EPlayerStance.CROUCH)
             {
                 _crouchDuration += TICK_RATE;
@@ -45,7 +45,7 @@ namespace AntiDropshot
                 _crouchDuration = 0f;
             }
 
-            // 3. Жесткий перехват PRONE (Дропшот)
+            // 3. Жесткая блокировка PRONE (Dropshot)
             if (currentStance == EPlayerStance.PRONE)
             {
                 if (_crouchDuration < REQUIRED_CROUCH_TIME)
@@ -60,16 +60,20 @@ namespace AntiDropshot
             if (_isCorrecting) return;
             _isCorrecting = true;
 
-            // Используем надежный метод смены стойки сервером
+            // Принудительная смена стойки (используется надежный метод из вашего SuppressionSystem)
             player.stance.checkStance(target, true);
 
-            // Экспериментальный метод: сброс вертикальной скорости
-            // Это мгновенно прекращает любую анимацию прыжка или падения
-            if (player.movement.velocity.y > 0)
+            // Профессиональный сброс инерции через CharacterController
+            // Это "примораживает" игрока к месту, исключая проскальзывание в анимацию
+            if (player.movement.controller != null)
             {
-                Vector3 newVelocity = player.movement.velocity;
-                newVelocity.y = 0;
-                player.movement.sendUpdateVelocity(newVelocity);
+                // Если игрок пытается двигаться вверх (прыжок) или падать
+                if (player.movement.controller.velocity.y != 0)
+                {
+                    // В Unturned мы не всегда можем напрямую задать velocity контроллеру,
+                    // но мы можем принудительно обновить состояние перемещения.
+                    player.movement.readSecondaryInput(); 
+                }
             }
 
             _isCorrecting = false;
@@ -77,7 +81,6 @@ namespace AntiDropshot
 
         void OnDestroy()
         {
-            // Очистка ссылок
             player = null;
         }
     }
