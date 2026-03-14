@@ -1,6 +1,7 @@
 using UnityEngine;
 using SDG.Unturned;
 using Rocket.Unturned.Player;
+using System.Collections;
 
 namespace AntiDropshot
 {
@@ -8,79 +9,77 @@ namespace AntiDropshot
     {
         private Player player;
         private EPlayerStance lastValidStance;
-        private float lastCrouchStartTime;
+        private float crouchStartTime;
         private bool isInternalChanging = false;
 
-        // Настройка задержки: 0.5 - 0.8 сек считается стандартом для тактических серверов
-        private const float MIN_TIME_IN_CROUCH = 0.6f; 
+        // Константы баланса
+        private const float PRONE_DELAY = 3.0f; // Обязательное время в приседе (сек)
 
         void Awake()
         {
             player = GetComponent<Player>();
             lastValidStance = player.stance.stance;
-            
-            // Подписка на нативное событие Unturned
             player.stance.onStanceUpdated += OnStanceUpdated;
         }
 
         private void OnStanceUpdated()
         {
-            // Защита от рекурсии при вызове checkStance самим плагином
             if (isInternalChanging) return;
 
             EPlayerStance currentStance = player.stance.stance;
 
-            // 1. Блокировка дропшота в воздухе (самая частая лазейка)
+            // 1. Блокировка любых прыжков/падений (Grounded check)
             if (!player.movement.isGrounded && currentStance != EPlayerStance.STAND)
             {
-                ForceStance(EPlayerStance.STAND);
+                ExecuteForcedStance(EPlayerStance.STAND);
                 return;
             }
 
-            // 2. СТРОГИЙ ФИЛЬТР ПЕРЕХОДА В PRONE
+            // 2. Логика входа в состояние PRONE (Лежа)
             if (currentStance == EPlayerStance.PRONE)
             {
-                // Если попытка лечь была НЕ из приседа
+                // Если игрок НЕ был в приседе до этого момента
                 if (lastValidStance != EPlayerStance.CROUCH)
                 {
-                    // Мгновенно сажаем игрока. Пакет перехватывается "секунда в секунду"
-                    ForceStance(EPlayerStance.CROUCH);
+                    // Прямой переход Stand -> Prone запрещен. Сажаем силой.
+                    crouchStartTime = Time.time;
+                    ExecuteForcedStance(EPlayerStance.CROUCH);
                     return;
                 }
 
-                // Если игрок в приседе, но нажал "лечь" слишком быстро (защита от макросов)
-                if (Time.time - lastCrouchStartTime < MIN_TIME_IN_CROUCH)
+                // Если был в приседе, но не выждал 3 секунды
+                float timeInCrouch = Time.time - crouchStartTime;
+                if (timeInCrouch < PRONE_DELAY)
                 {
-                    ForceStance(EPlayerStance.CROUCH);
+                    // Отбрасываем обратно в присед "секунда в секунду"
+                    ExecuteForcedStance(EPlayerStance.CROUCH);
                     return;
                 }
             }
 
-            // Фиксируем время входа в присед для проверки задержки
+            // 3. Фиксация начала приседа
             if (currentStance == EPlayerStance.CROUCH && lastValidStance != EPlayerStance.CROUCH)
             {
-                lastCrouchStartTime = Time.time;
+                crouchStartTime = Time.time;
             }
 
-            // Если проверка пройдена, обновляем последнюю валидную стойку
             lastValidStance = currentStance;
         }
 
-        private void ForceStance(EPlayerStance targetStance)
+        private void ExecuteForcedStance(EPlayerStance target)
         {
             isInternalChanging = true;
-            // Использование метода из SuppressionSystem для надежной смены стойки
-            player.stance.checkStance(targetStance, true);
-            lastValidStance = targetStance;
+            // Используем нативный метод с приоритетом сервера (reliable = true)
+            // Аналогично логике из вашего SuppressionSystem
+            player.stance.checkStance(target, true); 
+            lastValidStance = target;
             isInternalChanging = false;
         }
 
         void OnDestroy()
         {
             if (player != null && player.stance != null)
-            {
                 player.stance.onStanceUpdated -= OnStanceUpdated;
-            }
         }
     }
 }
