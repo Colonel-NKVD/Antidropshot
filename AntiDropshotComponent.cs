@@ -7,54 +7,80 @@ namespace AntiDropshot
     public class AntiDropshotComponent : MonoBehaviour
     {
         private Player player;
-        private float lastStanceChangeTime;
-        private const float MIN_CROUCH_TIME = 0.5f; // Минимум 0.5 сек в приседе перед тем как лечь
+        private EPlayerStance lastValidStance;
+        private float lastCrouchStartTime;
+        private bool isInternalChanging = false;
+
+        // Настройка задержки: 0.5 - 0.8 сек считается стандартом для тактических серверов
+        private const float MIN_TIME_IN_CROUCH = 0.6f; 
 
         void Awake()
         {
             player = GetComponent<Player>();
+            lastValidStance = player.stance.stance;
+            
+            // Подписка на нативное событие Unturned
             player.stance.onStanceUpdated += OnStanceUpdated;
         }
 
         private void OnStanceUpdated()
         {
+            // Защита от рекурсии при вызове checkStance самим плагином
+            if (isInternalChanging) return;
+
             EPlayerStance currentStance = player.stance.stance;
 
-            // ГАЙКА №1: Запрет на падение в прыжке/падении
-            // Если игрок в воздухе и пытается лечь или сесть
+            // 1. Блокировка дропшота в воздухе (самая частая лазейка)
             if (!player.movement.isGrounded && currentStance != EPlayerStance.STAND)
             {
                 ForceStance(EPlayerStance.STAND);
                 return;
             }
 
-            // ГАЙКА №2: Контроль последовательности (Stand -> Crouch -> Prone)
+            // 2. СТРОГИЙ ФИЛЬТР ПЕРЕХОДА В PRONE
             if (currentStance == EPlayerStance.PRONE)
             {
-                // Если игрок попытался лечь прямо из стойки стоя/спринта
-                // Или если он пробыл в приседе меньше установленного времени (защита от спама Z)
-                if (Time.time - lastStanceChangeTime < MIN_CROUCH_TIME)
+                // Если попытка лечь была НЕ из приседа
+                if (lastValidStance != EPlayerStance.CROUCH)
+                {
+                    // Мгновенно сажаем игрока. Пакет перехватывается "секунда в секунду"
+                    ForceStance(EPlayerStance.CROUCH);
+                    return;
+                }
+
+                // Если игрок в приседе, но нажал "лечь" слишком быстро (защита от макросов)
+                if (Time.time - lastCrouchStartTime < MIN_TIME_IN_CROUCH)
                 {
                     ForceStance(EPlayerStance.CROUCH);
+                    return;
                 }
             }
-            
-            // Фиксируем время последнего изменения на присед, чтобы начать отсчет для Prone
-            if (currentStance == EPlayerStance.CROUCH)
+
+            // Фиксируем время входа в присед для проверки задержки
+            if (currentStance == EPlayerStance.CROUCH && lastValidStance != EPlayerStance.CROUCH)
             {
-                lastStanceChangeTime = Time.time;
+                lastCrouchStartTime = Time.time;
             }
+
+            // Если проверка пройдена, обновляем последнюю валидную стойку
+            lastValidStance = currentStance;
         }
 
-        private void ForceStance(EPlayerStance stance)
+        private void ForceStance(EPlayerStance targetStance)
         {
-            // Используем проверенный метод из вашего SuppressionSystem
-            player.stance.checkStance(stance, true);
+            isInternalChanging = true;
+            // Использование метода из SuppressionSystem для надежной смены стойки
+            player.stance.checkStance(targetStance, true);
+            lastValidStance = targetStance;
+            isInternalChanging = false;
         }
 
         void OnDestroy()
         {
-            if (player != null) player.stance.onStanceUpdated -= OnStanceUpdated;
+            if (player != null && player.stance != null)
+            {
+                player.stance.onStanceUpdated -= OnStanceUpdated;
+            }
         }
     }
 }
