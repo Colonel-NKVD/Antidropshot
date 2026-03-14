@@ -7,24 +7,21 @@ namespace AntiDropshot
     public class AntiDropshotComponent : MonoBehaviour
     {
         private Player player;
-        private UnturnedPlayer uPlayer;
-        
         private float _crouchDuration = 0f;
         private bool _isCorrecting = false;
-        private EPlayerStance _lastActualStance;
+        private EPlayerStance _lastFrameStance;
         private EPlayerStance _lastValidStance;
 
-        // Настройки баланса
-        private const float REQUIRED_TIME = 3.0f; // Задержка для смены позы (сек)
-        private const ushort STAMINA_COST = 10;   // Трата стамины
+        // Настройки
+        private const float TRANSITION_TIME = 3.0f; // 3 секунды в приседе
+        private const byte STAMINA_COST = 10;
         private const float TICK_RATE = 0.02f;
 
         void Awake()
         {
             player = GetComponent<Player>();
-            uPlayer = UnturnedPlayer.FromPlayer(player);
-            _lastActualStance = player.stance.stance;
-            _lastValidStance = _lastActualStance;
+            _lastFrameStance = player.stance.stance;
+            _lastValidStance = _lastFrameStance;
         }
 
         void FixedUpdate()
@@ -33,16 +30,18 @@ namespace AntiDropshot
 
             EPlayerStance currentStance = player.stance.stance;
 
-            // 1. ТРАТА СТАМИНЫ ПРИ ЛЮБОЙ СМЕНЕ ПОЗЫ
-            if (currentStance != _lastActualStance)
+            // 1. СПИСАНИЕ СТАМИНЫ (Исправлено для CS0200)
+            if (currentStance != _lastFrameStance)
             {
-                // Уменьшаем стамину, не уходя в минус
-                if (uPlayer.Stamina > STAMINA_COST)
-                    uPlayer.Stamina -= STAMINA_COST;
+                if (player.life.stamina >= STAMINA_COST)
+                    player.life.stamina -= STAMINA_COST;
                 else
-                    uPlayer.Stamina = 0;
+                    player.life.stamina = 0;
 
-                _lastActualStance = currentStance;
+                // Синхронизируем стамину с клиентом
+                player.life.sendRevive(); 
+                
+                _lastFrameStance = currentStance;
             }
 
             // 2. БЛОКИРОВКА В ВОЗДУХЕ
@@ -56,7 +55,7 @@ namespace AntiDropshot
                 return;
             }
 
-            // 3. ЛОГИКА ТАЙМЕРА ПРИСЕДА
+            // 3. ТАЙМЕР ПРИСЕДА
             if (currentStance == EPlayerStance.CROUCH)
             {
                 _crouchDuration += TICK_RATE;
@@ -66,38 +65,38 @@ namespace AntiDropshot
                 _crouchDuration = 0f;
             }
 
-            // 4. ЖЕСТКИЙ КОНТРОЛЬ ПЕРЕХОДОВ (ШЛЮЗ)
-            
-            // А) Блокировка падения (Stand -> Prone мимо Crouch)
+            // 4. КОНТРОЛЬ ПЕРЕХОДОВ (ШЛЮЗ)
+
+            // А) Логика "Приземления" (Вход в PRONE)
             if (currentStance == EPlayerStance.PRONE)
             {
-                if (_lastValidStance != EPlayerStance.CROUCH || _crouchDuration < REQUIRED_TIME)
+                if (_lastValidStance != EPlayerStance.CROUCH || _crouchDuration < TRANSITION_TIME)
                 {
                     ForceStanceImmediate(EPlayerStance.CROUCH);
                     return;
                 }
             }
 
-            // Б) Блокировка вставания (Prone -> Stand мимо Crouch)
+            // Б) Логика "Подъема" (Выход в STAND)
             if (currentStance == EPlayerStance.STAND && _lastValidStance == EPlayerStance.PRONE)
             {
-                // Если игрок лежал и попытался сразу встать — принудительно сажаем
+                // Запрещаем мгновенный подъем из лежа в стоя. Только через присед.
                 ForceStanceImmediate(EPlayerStance.CROUCH);
                 return;
             }
 
-            // В) Задержка при вставании (Crouch -> Stand после Prone)
             if (currentStance == EPlayerStance.STAND && _lastValidStance == EPlayerStance.CROUCH)
             {
-                // Если мы в приседе после положения лежа, нужно выждать те же 3 секунды
-                if (_crouchDuration < REQUIRED_TIME)
+                // Если мы пытаемся встать, но еще не "отсидели" 3 секунды после того как лежали
+                // Примечание: если игрок просто присел и хочет встать, это тоже займет 3 сек.
+                if (_crouchDuration < TRANSITION_TIME)
                 {
                     ForceStanceImmediate(EPlayerStance.CROUCH);
                     return;
                 }
             }
 
-            // Если все проверки пройдены, обновляем валидную стойку
+            // Обновляем валидное состояние, если все проверки пройдены
             _lastValidStance = currentStance;
         }
 
@@ -106,16 +105,15 @@ namespace AntiDropshot
             if (_isCorrecting) return;
             _isCorrecting = true;
 
-            // Надежный метод смены стойки сервером с принудительной синхронизацией
+            // Используем надежный метод смены стойки сервером
             player.stance.checkStance(target, true);
-            
+
             _isCorrecting = false;
         }
 
         void OnDestroy()
         {
             player = null;
-            uPlayer = null;
         }
     }
 }
