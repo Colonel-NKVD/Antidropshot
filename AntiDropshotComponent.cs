@@ -12,8 +12,8 @@ namespace AntiDropshot
         private EPlayerStance _lastFrameStance;
         private EPlayerStance _lastValidStance;
 
-        // Настройки
-        private const float TRANSITION_TIME = 3.0f; // 3 секунды в приседе
+        // Настройки баланса
+        private const float TRANSITION_REQUIRED_TIME = 3.0f; // 3 сек в приседе
         private const byte STAMINA_COST = 10;
         private const float TICK_RATE = 0.02f;
 
@@ -30,16 +30,12 @@ namespace AntiDropshot
 
             EPlayerStance currentStance = player.stance.stance;
 
-            // 1. СПИСАНИЕ СТАМИНЫ (Исправлено для CS0200)
+            // 1. ПРОФЕССИОНАЛЬНОЕ СПИСАНИЕ СТАМИНЫ
             if (currentStance != _lastFrameStance)
             {
-                if (player.life.stamina >= STAMINA_COST)
-                    player.life.stamina -= STAMINA_COST;
-                else
-                    player.life.stamina = 0;
-
-                // Синхронизируем стамину с клиентом
-                player.life.sendRevive(); 
+                // Используем нативный метод для потребления стамины
+                // Это автоматически синхронизирует данные и вызывает нужные события
+                player.life.askConsumeStamina(STAMINA_COST);
                 
                 _lastFrameStance = currentStance;
             }
@@ -55,7 +51,7 @@ namespace AntiDropshot
                 return;
             }
 
-            // 3. ТАЙМЕР ПРИСЕДА
+            // 3. ОБРАБОТКА ТАЙМЕРА ПРИСЕДА
             if (currentStance == EPlayerStance.CROUCH)
             {
                 _crouchDuration += TICK_RATE;
@@ -65,38 +61,30 @@ namespace AntiDropshot
                 _crouchDuration = 0f;
             }
 
-            // 4. КОНТРОЛЬ ПЕРЕХОДОВ (ШЛЮЗ)
-
-            // А) Логика "Приземления" (Вход в PRONE)
+            // 4. ЛОГИКА "ШЛЮЗА" ДЛЯ ПЕРЕХОДОВ
+            
+            // А) ПАДЕНИЕ (Stand -> Prone запрещено, только через Crouch 3 сек)
             if (currentStance == EPlayerStance.PRONE)
             {
-                if (_lastValidStance != EPlayerStance.CROUCH || _crouchDuration < TRANSITION_TIME)
+                if (_lastValidStance != EPlayerStance.CROUCH || _crouchDuration < TRANSITION_REQUIRED_TIME)
                 {
                     ForceStanceImmediate(EPlayerStance.CROUCH);
                     return;
                 }
             }
 
-            // Б) Логика "Подъема" (Выход в STAND)
-            if (currentStance == EPlayerStance.STAND && _lastValidStance == EPlayerStance.PRONE)
+            // Б) ПОДЪЕМ (Prone -> Stand запрещено, только через Crouch 3 сек)
+            if (currentStance == EPlayerStance.STAND)
             {
-                // Запрещаем мгновенный подъем из лежа в стоя. Только через присед.
-                ForceStanceImmediate(EPlayerStance.CROUCH);
-                return;
-            }
-
-            if (currentStance == EPlayerStance.STAND && _lastValidStance == EPlayerStance.CROUCH)
-            {
-                // Если мы пытаемся встать, но еще не "отсидели" 3 секунды после того как лежали
-                // Примечание: если игрок просто присел и хочет встать, это тоже займет 3 сек.
-                if (_crouchDuration < TRANSITION_TIME)
+                // Если пытаемся встать сразу из положения лежа или не отсидели таймер в приседе
+                if (_lastValidStance == EPlayerStance.PRONE || (_lastValidStance == EPlayerStance.CROUCH && _crouchDuration < TRANSITION_REQUIRED_TIME))
                 {
                     ForceStanceImmediate(EPlayerStance.CROUCH);
                     return;
                 }
             }
 
-            // Обновляем валидное состояние, если все проверки пройдены
+            // Сохраняем последнее легальное состояние
             _lastValidStance = currentStance;
         }
 
@@ -105,7 +93,7 @@ namespace AntiDropshot
             if (_isCorrecting) return;
             _isCorrecting = true;
 
-            // Используем надежный метод смены стойки сервером
+            // Принудительная серверная смена стойки (из вашего SuppressionSystem)
             player.stance.checkStance(target, true);
 
             _isCorrecting = false;
