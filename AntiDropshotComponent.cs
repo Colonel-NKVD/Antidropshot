@@ -1,7 +1,7 @@
 using UnityEngine;
 using SDG.Unturned;
 using Rocket.Unturned.Player;
-using Steamworks;
+using System.Reflection;
 
 namespace AntiDropshot
 {
@@ -13,7 +13,9 @@ namespace AntiDropshot
         private EPlayerStance _lastFrameStance;
         private EPlayerStance _lastValidStance;
 
-        // Константы
+        // Рефлексия для доступа к закрытому полю стамины
+        private static readonly FieldInfo StaminaField = typeof(PlayerLife).GetField("_stamina", BindingFlags.Instance | BindingFlags.NonPublic);
+
         private const float TRANSITION_TIME = 3.0f; 
         private const byte STAMINA_COST = 10;
         private const float TICK_RATE = 0.02f;
@@ -31,25 +33,24 @@ namespace AntiDropshot
 
             EPlayerStance currentStance = player.stance.stance;
 
-            // 1. ГАРАНТИРОВАННОЕ СПИСАНИЕ СТАМИНЫ (Ядерный вариант)
+            // 1. СПИСАНИЕ СТАМИНЫ ЧЕРЕЗ РЕФЛЕКСИЮ (Гарантия обхода защиты)
             if (currentStance != _lastFrameStance)
             {
-                // Используем askDamage с типом STAMINA. 
-                // Это единственный 100% публичный путь во всех версиях API.
-                EPlayerKill kill;
-                player.life.askDamage(
-                    STAMINA_COST, 
-                    Vector3.up, 
-                    EDeathCause.STAMINA, 
-                    ELimb.SPINE, 
-                    CSteamID.Nil, 
-                    out kill
-                );
+                byte currentStamina = player.life.stamina;
+                byte newStamina = (byte)Mathf.Max(0, currentStamina - STAMINA_COST);
+                
+                // Устанавливаем значение напрямую в закрытое поле _stamina
+                if (StaminaField != null)
+                {
+                    StaminaField.SetValue(player.life, newStamina);
+                    // Синхронизируем изменения с клиентом
+                    player.life.sendRevive();
+                }
                 
                 _lastFrameStance = currentStance;
             }
 
-            // 2. GROUND LOCK
+            // 2. БЛОКИРОВКА В ВОЗДУХЕ
             if (!player.movement.isGrounded)
             {
                 if (currentStance != EPlayerStance.STAND) ForceStanceImmediate(EPlayerStance.STAND);
@@ -89,10 +90,7 @@ namespace AntiDropshot
         {
             if (_isCorrecting) return;
             _isCorrecting = true;
-            
-            // Нативный метод из вашего SuppressionSystem
             player.stance.checkStance(target, true);
-            
             _isCorrecting = false;
         }
 
