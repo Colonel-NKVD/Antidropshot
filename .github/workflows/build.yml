@@ -15,15 +15,14 @@ jobs:
       uses: microsoft/setup-msbuild@v2
 
     - name: Restore NuGet Packages
-      # Здесь должно быть имя вашего актуального .csproj файла
       run: nuget restore AntiDropshot.csproj
 
     - name: Build
-      # Указываем правильный файл проекта для сборки
-      run: msbuild AntiDropshot.csproj /p:Configuration=Release /p:TargetFramework=net48
+      run: msbuild AntiDropshot.csproj /p:Configuration=Release
 
     - name: Upload DLL
       uses: actions/upload-artifact@v4
       with:
-        name: AntiDropshot-Release
-        path: bin/Release/net48/AntiDropshot.dll
+        name: AntiDropshot-Package
+        # Путь теперь соответствует настройкам в .csproj
+        path: bin/Release/AntiDropshot.dll
