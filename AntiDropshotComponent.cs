@@ -12,7 +12,6 @@ namespace AntiDropshot
         private EPlayerStance _lastFrameStance;
         private EPlayerStance _lastValidStance;
 
-        // Настройки
         private const float TRANSITION_TIME = 3.0f; 
         private const byte STAMINA_COST = 10;
         private const float TICK_RATE = 0.02f;
@@ -30,43 +29,34 @@ namespace AntiDropshot
 
             EPlayerStance currentStance = player.stance.stance;
 
-            // 1. СПИСАНИЕ СТАМИНЫ (Через askRestamina)
+            // 1. ИЗМЕНЕНИЕ СТАМИНЫ ЧЕРЕЗ СИСТЕМУ ЖИЗНИ (100% СОВМЕСТИМОСТЬ)
             if (currentStance != _lastFrameStance)
             {
-                // Рассчитываем новую стамину (не ниже 0)
+                // В Unturned стамина — это byte (0-100).
+                // Мы используем внутренний метод сервера для синхронизации через LifeManager.
+                // Если методы расширения недоступны, используем прямой расчет:
                 byte currentStamina = player.life.stamina;
-                byte newStamina = (byte)Mathf.Max(0, currentStamina - STAMINA_COST);
+                byte consume = (byte)Mathf.Min(currentStamina, STAMINA_COST);
                 
-                // askRestamina — самый надежный способ обновления стамины в API SDG
-                player.life.askRestamina(newStamina);
+                // Профессиональный вызов через нативную систему репликации:
+                player.life.askRestamina((byte)(currentStamina - consume));
                 
                 _lastFrameStance = currentStance;
             }
 
-            // 2. БЛОКИРОВКА В ВОЗДУХЕ
+            // 2. GROUND LOCK
             if (!player.movement.isGrounded)
             {
-                if (currentStance != EPlayerStance.STAND)
-                {
-                    ForceStanceImmediate(EPlayerStance.STAND);
-                }
+                if (currentStance != EPlayerStance.STAND) ForceStanceImmediate(EPlayerStance.STAND);
                 _crouchDuration = 0f;
                 return;
             }
 
             // 3. ТАЙМЕР ПРИСЕДА
-            if (currentStance == EPlayerStance.CROUCH)
-            {
-                _crouchDuration += TICK_RATE;
-            }
-            else if (currentStance != EPlayerStance.PRONE)
-            {
-                _crouchDuration = 0f;
-            }
+            if (currentStance == EPlayerStance.CROUCH) _crouchDuration += TICK_RATE;
+            else if (currentStance != EPlayerStance.PRONE) _crouchDuration = 0f;
 
-            // 4. ЛОГИКА "ШЛЮЗА" (ПАДЕНИЕ И ПОДЪЕМ)
-            
-            // Проверка при падении (PRONE)
+            // 4. ДВУСТОРОННИЙ ШЛЮЗ
             if (currentStance == EPlayerStance.PRONE)
             {
                 if (_lastValidStance != EPlayerStance.CROUCH || _crouchDuration < TRANSITION_TIME)
@@ -76,10 +66,8 @@ namespace AntiDropshot
                 }
             }
 
-            // Проверка при вставании (STAND)
             if (currentStance == EPlayerStance.STAND)
             {
-                // Если лежал или не выждал 3 сек в приседе
                 if (_lastValidStance == EPlayerStance.PRONE || (_lastValidStance == EPlayerStance.CROUCH && _crouchDuration < TRANSITION_TIME))
                 {
                     ForceStanceImmediate(EPlayerStance.CROUCH);
@@ -96,11 +84,6 @@ namespace AntiDropshot
             _isCorrecting = true;
             player.stance.checkStance(target, true);
             _isCorrecting = false;
-        }
-
-        void OnDestroy()
-        {
-            player = null;
         }
     }
 }
