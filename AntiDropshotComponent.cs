@@ -94,8 +94,6 @@ namespace AntiDropshot
         {
             return stance == EPlayerStance.STAND || 
                    stance == EPlayerStance.SPRINT || 
-                   stance == EPlayerStance.RUN || 
-                   stance == EPlayerStance.JUMP;
         }
 
         private void RevertStance(EPlayerStance fallbackStance)
