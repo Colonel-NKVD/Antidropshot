@@ -10,7 +10,8 @@ namespace AntiDropshot
         private float _crouchDuration = 0f;
         private bool _isCorrecting = false;
 
-        private const float REQUIRED_CROUCH_TIME = 3.0f; // 3 секунды в приседе
+        // Константы тайминга (3 секунды в приседе)
+        private const float REQUIRED_CROUCH_TIME = 3.0f; 
         private const float TICK_RATE = 0.02f;
 
         void Awake()
@@ -35,21 +36,23 @@ namespace AntiDropshot
                 return;
             }
 
-            // 2. Логика накопительного таймера
+            // 2. Логика накопительного таймера приседа
             if (currentStance == EPlayerStance.CROUCH)
             {
                 _crouchDuration += TICK_RATE;
             }
             else if (currentStance != EPlayerStance.PRONE)
             {
+                // Если игрок встал (STAND/SPRINT) - обнуляем прогресс полностью
                 _crouchDuration = 0f;
             }
 
-            // 3. Блокировка PRONE (Дропшот)
+            // 3. Жесткая блокировка PRONE (Dropshot)
             if (currentStance == EPlayerStance.PRONE)
             {
                 if (_crouchDuration < REQUIRED_CROUCH_TIME)
                 {
+                    // Игрок не выждал 3 секунды - возвращаем в CROUCH мгновенно
                     ForceStanceImmediate(EPlayerStance.CROUCH);
                 }
             }
@@ -60,14 +63,10 @@ namespace AntiDropshot
             if (_isCorrecting) return;
             _isCorrecting = true;
 
-            // Самый надежный способ из вашего SuppressionSystem
-            // Флаг 'force = true' заставляет сервер принудительно обновить состояние у клиента.
+            // Используем надежный метод, проверенный в SuppressionSystem.
+            // Второй аргумент 'true' (force) заставляет сервер принудительно 
+            // отправить пакет синхронизации клиенту.
             player.stance.checkStance(target, true);
-
-            // Если анимация все еще "проскакивает", мы принудительно сбрасываем 
-            // локальный таймер обновления стойки в компоненте.
-            // Это гарантированно публичное поле в классе PlayerStance.
-            player.stance.lastStance = Time.time;
 
             _isCorrecting = false;
         }
