@@ -9,12 +9,11 @@ namespace AntiDropshot
         private float _crouchDuration = 0f;
         private bool _isCorrecting = false;
         
-        // Храним только ту стойку, которая была официально "одобрена" плагином
         private EPlayerStance _lastValidStance;
 
         // Настройки баланса
-        private const float TRANSITION_TIME = 3.0f; 
-        private const byte STAMINA_COST = 10;
+        private const float TRANSITION_TIME = 2.0f; // Уменьшено до 2 секунд, как просили
+        private const float STAMINA_COST = 10f;     // Используем float, так как этого требует современный метод
 
         void Awake()
         {
@@ -28,7 +27,7 @@ namespace AntiDropshot
 
             EPlayerStance currentStance = player.stance.stance;
 
-            // 1. БЛОКИРОВКА В ВОЗДУХЕ (Ground Lock)
+            // 1. БЛОКИРОВКА В ВОЗДУХЕ
             if (!player.movement.isGrounded)
             {
                 if (currentStance != EPlayerStance.STAND) ForceStanceImmediate(EPlayerStance.STAND);
@@ -37,55 +36,53 @@ namespace AntiDropshot
                 return;
             }
 
-            // 2. ОПТИМИЗАЦИЯ: Если игрок не меняет позу, просто считаем время (если он сидит)
+            // 2. ОПТИМИЗАЦИЯ ХОЛОСТОГО ХОДА
             if (currentStance == _lastValidStance)
             {
                 if (currentStance == EPlayerStance.CROUCH)
                 {
-                    // Используем системное время Unity для точности вместо жесткого TICK_RATE
                     _crouchDuration += Time.fixedDeltaTime; 
                 }
-                return; // Прерываем выполнение, лишние проверки не нужны
+                return; 
             }
 
             // === 3. ЛОГИКА ИЗМЕНЕНИЯ ПОЗЫ ===
             bool isTransitionAllowed = true;
 
-            // А) Игрок пытается лечь (PRONE)
+            // А) Игрок пытается лечь
             if (currentStance == EPlayerStance.PRONE)
             {
                 if (_lastValidStance != EPlayerStance.CROUCH || _crouchDuration < TRANSITION_TIME)
                 {
-                    isTransitionAllowed = false; // Не отсидел 3 секунды в приседе
+                    isTransitionAllowed = false; 
                 }
             }
-            // Б) Игрок пытается встать (STAND)
+            // Б) Игрок пытается встать
             else if (currentStance == EPlayerStance.STAND)
             {
                 if (_lastValidStance == EPlayerStance.PRONE || (_lastValidStance == EPlayerStance.CROUCH && _crouchDuration < TRANSITION_TIME))
                 {
-                    isTransitionAllowed = false; // Пытается вскочить из положения лежа или не досидел 3 секунды
+                    isTransitionAllowed = false; 
                 }
             }
 
             // === 4. ПРИМЕНЕНИЕ РЕЗУЛЬТАТА ===
             if (!isTransitionAllowed)
             {
-                // Если переход запрещен, жестко возвращаем в предыдущую легальную позу (в CROUCH)
                 ForceStanceImmediate(EPlayerStance.CROUCH);
             }
             else
             {
                 // Переход разрешен!
 
-                // Списываем стамину ТОЛЬКО за успешную смену позы
+                // 100% рабочее списание стамины для современных серверов Unturned
                 if (STAMINA_COST > 0 && player.life.stamina >= STAMINA_COST)
                 {
-                    // askTire — стандартный метод Unturned для "усталости". Работает безотказно.
-                    player.life.askTire(STAMINA_COST); 
+                    // Метод serverModifyStamina принимает float. 
+                    // Отрицательное значение принудительно отнимает стамину и обновляет полоску у клиента.
+                    player.life.serverModifyStamina(-STAMINA_COST); 
                 }
 
-                // Обновляем валидную стойку и сбрасываем таймер для нового состояния
                 _lastValidStance = currentStance;
                 _crouchDuration = 0f; 
             }
