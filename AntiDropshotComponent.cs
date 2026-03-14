@@ -8,78 +8,82 @@ namespace AntiDropshot
     public class AntiDropshotComponent : MonoBehaviour
     {
         private Player player;
-        private EPlayerStance lastValidStance;
-        private float crouchStartTime;
-        private bool isInternalChanging = false;
-
-        // Константы баланса
-        private const float PRONE_DELAY = 3.0f; // Обязательное время в приседе (сек)
+        private float _crouchDuration = 0f;
+        private bool _isCorrecting = false;
+        
+        // Константы для жесткой настройки
+        private const float REQUIRED_CROUCH_TIME = 3.0f; // Обязательно 3 секунды в приседе
+        private const float TICK_RATE = 0.02f; // Частота FixedUpdate
 
         void Awake()
         {
             player = GetComponent<Player>();
-            lastValidStance = player.stance.stance;
-            player.stance.onStanceUpdated += OnStanceUpdated;
         }
 
-        private void OnStanceUpdated()
+        // Мы используем FixedUpdate, чтобы опережать сетевую репликацию Unturned
+        void FixedUpdate()
         {
-            if (isInternalChanging) return;
+            if (player == null || player.life.isDead) return;
 
             EPlayerStance currentStance = player.stance.stance;
 
-            // 1. Блокировка любых прыжков/падений (Grounded check)
-            if (!player.movement.isGrounded && currentStance != EPlayerStance.STAND)
+            // ГАЙКА 1: Проверка нахождения в воздухе (Ground Lock)
+            // Если игрок не на земле, он обязан быть в STAND. Любая попытка сменить - мгновенный возврат.
+            if (!player.movement.isGrounded)
             {
-                ExecuteForcedStance(EPlayerStance.STAND);
+                if (currentStance != EPlayerStance.STAND)
+                {
+                    ForceStanceImmediate(EPlayerStance.STAND);
+                }
+                _crouchDuration = 0f; // Сбрасываем таймер приседа в воздухе
                 return;
             }
 
-            // 2. Логика входа в состояние PRONE (Лежа)
+            // ГАЙКА 2: Логика накопительного таймера приседа
+            if (currentStance == EPlayerStance.CROUCH)
+            {
+                _crouchDuration += TICK_RATE;
+            }
+            else if (currentStance != EPlayerStance.PRONE)
+            {
+                // Если игрок встал (STAND/SPRINT), таймер сгорает мгновенно
+                _crouchDuration = 0f;
+            }
+
+            // ГАЙКА 3: Жесткая блокировка PRONE (Дропшот)
             if (currentStance == EPlayerStance.PRONE)
             {
-                // Если игрок НЕ был в приседе до этого момента
-                if (lastValidStance != EPlayerStance.CROUCH)
+                if (_crouchDuration < REQUIRED_CROUCH_TIME)
                 {
-                    // Прямой переход Stand -> Prone запрещен. Сажаем силой.
-                    crouchStartTime = Time.time;
-                    ExecuteForcedStance(EPlayerStance.CROUCH);
-                    return;
-                }
-
-                // Если был в приседе, но не выждал 3 секунды
-                float timeInCrouch = Time.time - crouchStartTime;
-                if (timeInCrouch < PRONE_DELAY)
-                {
-                    // Отбрасываем обратно в присед "секунда в секунду"
-                    ExecuteForcedStance(EPlayerStance.CROUCH);
-                    return;
+                    // Игрок не "отсидел" положенные 3 секунды. 
+                    // Возвращаем в CROUCH мгновенно, не дожидаясь завершения кадра.
+                    ForceStanceImmediate(EPlayerStance.CROUCH);
                 }
             }
+        }
 
-            // 3. Фиксация начала приседа
-            if (currentStance == EPlayerStance.CROUCH && lastValidStance != EPlayerStance.CROUCH)
+        /// <summary>
+        /// Самый быстрый способ смены стойки в RocketMod/Unturned.
+        /// Использование флага 'reliable: true' заставляет сервер приоритетно 
+        /// перезаписать состояние на стороне клиента.
+        /// </summary>
+        private void ForceStanceImmediate(EPlayerStance target)
+        {
+            if (_isCorrecting) return;
+            
+            _isCorrecting = true;
+            
+            // Нативный вызов, используемый в SuppressionSystem
+            player.stance.checkStance(target, true);
+            
+            // Дополнительная мера: сброс скорости прыжка, чтобы нельзя было 
+            // использовать "дельфинчика" (прыжок + лечь)
+            if (target == EPlayerStance.CROUCH)
             {
-                crouchStartTime = Time.time;
+                player.movement.jump(); // Это заставляет сервер пересчитать позицию
             }
 
-            lastValidStance = currentStance;
-        }
-
-        private void ExecuteForcedStance(EPlayerStance target)
-        {
-            isInternalChanging = true;
-            // Используем нативный метод с приоритетом сервера (reliable = true)
-            // Аналогично логике из вашего SuppressionSystem
-            player.stance.checkStance(target, true); 
-            lastValidStance = target;
-            isInternalChanging = false;
-        }
-
-        void OnDestroy()
-        {
-            if (player != null && player.stance != null)
-                player.stance.onStanceUpdated -= OnStanceUpdated;
+            _isCorrecting = false;
         }
     }
 }
