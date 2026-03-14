@@ -12,8 +12,8 @@ namespace AntiDropshot
         private EPlayerStance _lastFrameStance;
         private EPlayerStance _lastValidStance;
 
-        // Настройки баланса
-        private const float TRANSITION_REQUIRED_TIME = 3.0f; 
+        // Настройки
+        private const float TRANSITION_TIME = 3.0f; 
         private const byte STAMINA_COST = 10;
         private const float TICK_RATE = 0.02f;
 
@@ -30,12 +30,16 @@ namespace AntiDropshot
 
             EPlayerStance currentStance = player.stance.stance;
 
-            // 1. СПИСАНИЕ СТАМИНЫ (Профессиональный метод)
+            // 1. СПИСАНИЕ СТАМИНЫ (Через askRestamina)
             if (currentStance != _lastFrameStance)
             {
-                // consumeStamina — это публичный метод, который безопасно 
-                // вычитает стамину и синхронизирует состояние.
-                player.life.consumeStamina(STAMINA_COST);
+                // Рассчитываем новую стамину (не ниже 0)
+                byte currentStamina = player.life.stamina;
+                byte newStamina = (byte)Mathf.Max(0, currentStamina - STAMINA_COST);
+                
+                // askRestamina — самый надежный способ обновления стамины в API SDG
+                player.life.askRestamina(newStamina);
+                
                 _lastFrameStance = currentStance;
             }
 
@@ -50,7 +54,7 @@ namespace AntiDropshot
                 return;
             }
 
-            // 3. ОБРАБОТКА ТАЙМЕРА ПРИСЕДА
+            // 3. ТАЙМЕР ПРИСЕДА
             if (currentStance == EPlayerStance.CROUCH)
             {
                 _crouchDuration += TICK_RATE;
@@ -60,23 +64,23 @@ namespace AntiDropshot
                 _crouchDuration = 0f;
             }
 
-            // 4. ЛОГИКА "ШЛЮЗА" (МЕДЛЕННЫЙ ПОДЪЕМ И ПАДЕНИЕ)
+            // 4. ЛОГИКА "ШЛЮЗА" (ПАДЕНИЕ И ПОДЪЕМ)
             
-            // Защита от дропшота (вход в PRONE)
+            // Проверка при падении (PRONE)
             if (currentStance == EPlayerStance.PRONE)
             {
-                if (_lastValidStance != EPlayerStance.CROUCH || _crouchDuration < TRANSITION_REQUIRED_TIME)
+                if (_lastValidStance != EPlayerStance.CROUCH || _crouchDuration < TRANSITION_TIME)
                 {
                     ForceStanceImmediate(EPlayerStance.CROUCH);
                     return;
                 }
             }
 
-            // Защита от быстрого вставания (выход в STAND)
+            // Проверка при вставании (STAND)
             if (currentStance == EPlayerStance.STAND)
             {
-                // Если игрок лежал или еще не "отсидел" 3 секунды в приседе
-                if (_lastValidStance == EPlayerStance.PRONE || (_lastValidStance == EPlayerStance.CROUCH && _crouchDuration < TRANSITION_REQUIRED_TIME))
+                // Если лежал или не выждал 3 сек в приседе
+                if (_lastValidStance == EPlayerStance.PRONE || (_lastValidStance == EPlayerStance.CROUCH && _crouchDuration < TRANSITION_TIME))
                 {
                     ForceStanceImmediate(EPlayerStance.CROUCH);
                     return;
@@ -90,10 +94,7 @@ namespace AntiDropshot
         {
             if (_isCorrecting) return;
             _isCorrecting = true;
-
-            // Нативный метод из вашего SuppressionSystem
             player.stance.checkStance(target, true);
-
             _isCorrecting = false;
         }
 
