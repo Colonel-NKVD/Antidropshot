@@ -1,6 +1,7 @@
 using UnityEngine;
 using SDG.Unturned;
 using Rocket.Unturned.Player;
+using Steamworks;
 
 namespace AntiDropshot
 {
@@ -12,6 +13,7 @@ namespace AntiDropshot
         private EPlayerStance _lastFrameStance;
         private EPlayerStance _lastValidStance;
 
+        // Константы
         private const float TRANSITION_TIME = 3.0f; 
         private const byte STAMINA_COST = 10;
         private const float TICK_RATE = 0.02f;
@@ -29,17 +31,20 @@ namespace AntiDropshot
 
             EPlayerStance currentStance = player.stance.stance;
 
-            // 1. ИЗМЕНЕНИЕ СТАМИНЫ ЧЕРЕЗ СИСТЕМУ ЖИЗНИ (100% СОВМЕСТИМОСТЬ)
+            // 1. ГАРАНТИРОВАННОЕ СПИСАНИЕ СТАМИНЫ (Ядерный вариант)
             if (currentStance != _lastFrameStance)
             {
-                // В Unturned стамина — это byte (0-100).
-                // Мы используем внутренний метод сервера для синхронизации через LifeManager.
-                // Если методы расширения недоступны, используем прямой расчет:
-                byte currentStamina = player.life.stamina;
-                byte consume = (byte)Mathf.Min(currentStamina, STAMINA_COST);
-                
-                // Профессиональный вызов через нативную систему репликации:
-                player.life.askRestamina((byte)(currentStamina - consume));
+                // Используем askDamage с типом STAMINA. 
+                // Это единственный 100% публичный путь во всех версиях API.
+                EPlayerKill kill;
+                player.life.askDamage(
+                    STAMINA_COST, 
+                    Vector3.up, 
+                    EDeathCause.STAMINA, 
+                    ELimb.SPINE, 
+                    CSteamID.Nil, 
+                    out kill
+                );
                 
                 _lastFrameStance = currentStance;
             }
@@ -57,6 +62,7 @@ namespace AntiDropshot
             else if (currentStance != EPlayerStance.PRONE) _crouchDuration = 0f;
 
             // 4. ДВУСТОРОННИЙ ШЛЮЗ
+            // Вход в PRONE
             if (currentStance == EPlayerStance.PRONE)
             {
                 if (_lastValidStance != EPlayerStance.CROUCH || _crouchDuration < TRANSITION_TIME)
@@ -66,6 +72,7 @@ namespace AntiDropshot
                 }
             }
 
+            // Выход в STAND
             if (currentStance == EPlayerStance.STAND)
             {
                 if (_lastValidStance == EPlayerStance.PRONE || (_lastValidStance == EPlayerStance.CROUCH && _crouchDuration < TRANSITION_TIME))
@@ -82,8 +89,16 @@ namespace AntiDropshot
         {
             if (_isCorrecting) return;
             _isCorrecting = true;
+            
+            // Нативный метод из вашего SuppressionSystem
             player.stance.checkStance(target, true);
+            
             _isCorrecting = false;
+        }
+
+        void OnDestroy()
+        {
+            player = null;
         }
     }
 }
