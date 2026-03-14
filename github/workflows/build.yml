@@ -1,6 +1,6 @@
 name: Build AntiDropshot Plugin
 
-on: [push]
+on: [main]
 
 jobs:
   build:
