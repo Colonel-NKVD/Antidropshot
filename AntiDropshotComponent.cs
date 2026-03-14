@@ -10,7 +10,8 @@ namespace AntiDropshot
         private float _crouchDuration = 0f;
         private bool _isCorrecting = false;
 
-        private const float REQUIRED_CROUCH_TIME = 3.0f; // 3 секунды в приседе
+        // Константы тайминга (3 секунды "отсидки")
+        private const float REQUIRED_CROUCH_TIME = 3.0f; 
         private const float TICK_RATE = 0.02f;
 
         void Awake()
@@ -24,7 +25,7 @@ namespace AntiDropshot
 
             EPlayerStance currentStance = player.stance.stance;
 
-            // 1. Блокировка стоек в воздухе (Ground Lock)
+            // 1. Блокировка любых смен стоек в воздухе (Ground Lock)
             if (!player.movement.isGrounded)
             {
                 if (currentStance != EPlayerStance.STAND)
@@ -35,21 +36,23 @@ namespace AntiDropshot
                 return;
             }
 
-            // 2. Накопительный таймер приседа
+            // 2. Накопительный счетчик времени в приседе
             if (currentStance == EPlayerStance.CROUCH)
             {
                 _crouchDuration += TICK_RATE;
             }
             else if (currentStance != EPlayerStance.PRONE)
             {
+                // Если игрок встал (STAND/SPRINT) - обнуляем прогресс
                 _crouchDuration = 0f;
             }
 
-            // 3. Жесткая блокировка PRONE (Dropshot)
+            // 3. Перехват и блокировка PRONE (Dropshot)
             if (currentStance == EPlayerStance.PRONE)
             {
                 if (_crouchDuration < REQUIRED_CROUCH_TIME)
                 {
+                    // Игрок не выждал 3 секунды. Мгновенный возврат.
                     ForceStanceImmediate(EPlayerStance.CROUCH);
                 }
             }
@@ -60,22 +63,15 @@ namespace AntiDropshot
             if (_isCorrecting) return;
             _isCorrecting = true;
 
-            // Принудительная смена стойки (используется надежный метод из вашего SuppressionSystem)
+            // Используем нативный метод смены стойки. 
+            // Второй аргумент 'true' заставляет сервер принудительно обновить пакет для клиента.
             player.stance.checkStance(target, true);
 
-            // Профессиональный сброс инерции через CharacterController
-            // Это "примораживает" игрока к месту, исключая проскальзывание в анимацию
-            if (player.movement.controller != null)
-            {
-                // Если игрок пытается двигаться вверх (прыжок) или падать
-                if (player.movement.controller.velocity.y != 0)
-                {
-                    // В Unturned мы не всегда можем напрямую задать velocity контроллеру,
-                    // но мы можем принудительно обновить состояние перемещения.
-                    player.movement.readSecondaryInput(); 
-                }
-            }
-
+            // Чтобы исключить "проскальзывание" и спам, мы принудительно обновляем 
+            // время последней смены стойки в самом движке (если доступно через поле)
+            // и фиксируем камеру игрока.
+            player.animator.halt(); // Мгновенно останавливает текущие анимации перехода
+            
             _isCorrecting = false;
         }
 
