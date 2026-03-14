@@ -10,7 +10,7 @@ namespace AntiDropshot
         private float _crouchDuration = 0f;
         private bool _isCorrecting = false;
 
-        private const float REQUIRED_CROUCH_TIME = 3.0f; 
+        private const float REQUIRED_CROUCH_TIME = 3.0f; // 3 секунды в приседе
         private const float TICK_RATE = 0.02f;
 
         void Awake()
@@ -24,7 +24,7 @@ namespace AntiDropshot
 
             EPlayerStance currentStance = player.stance.stance;
 
-            // 1. Блокировка в воздухе (Ground Lock)
+            // 1. Блокировка стоек в воздухе (Ground Lock)
             if (!player.movement.isGrounded)
             {
                 if (currentStance != EPlayerStance.STAND)
@@ -35,7 +35,7 @@ namespace AntiDropshot
                 return;
             }
 
-            // 2. Таймер приседа
+            // 2. Логика накопительного таймера
             if (currentStance == EPlayerStance.CROUCH)
             {
                 _crouchDuration += TICK_RATE;
@@ -45,7 +45,7 @@ namespace AntiDropshot
                 _crouchDuration = 0f;
             }
 
-            // 3. Блокировка PRONE
+            // 3. Блокировка PRONE (Дропшот)
             if (currentStance == EPlayerStance.PRONE)
             {
                 if (_crouchDuration < REQUIRED_CROUCH_TIME)
@@ -60,13 +60,14 @@ namespace AntiDropshot
             if (_isCorrecting) return;
             _isCorrecting = true;
 
-            // ШАГ 1: Серверная смена стойки (надежный канал)
-            // Метод из вашего SuppressionSystem
+            // Самый надежный способ из вашего SuppressionSystem
+            // Флаг 'force = true' заставляет сервер принудительно обновить состояние у клиента.
             player.stance.checkStance(target, true);
 
-            // ШАГ 2: Принудительный запрос на перепроверку стойки. 
-            // Это заставляет сервер немедленно обработать изменение и отправить пакет клиенту.
-            player.stance.askCheckStance(target);
+            // Если анимация все еще "проскакивает", мы принудительно сбрасываем 
+            // локальный таймер обновления стойки в компоненте.
+            // Это гарантированно публичное поле в классе PlayerStance.
+            player.stance.lastStance = Time.time;
 
             _isCorrecting = false;
         }
