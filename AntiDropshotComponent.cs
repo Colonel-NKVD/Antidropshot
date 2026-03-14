@@ -10,7 +10,7 @@ namespace AntiDropshot
         private float _crouchDuration = 0f;
         private bool _isCorrecting = false;
 
-        // Константы тайминга (3 секунды "отсидки")
+        // Константы тайминга
         private const float REQUIRED_CROUCH_TIME = 3.0f; 
         private const float TICK_RATE = 0.02f;
 
@@ -25,7 +25,7 @@ namespace AntiDropshot
 
             EPlayerStance currentStance = player.stance.stance;
 
-            // 1. Блокировка любых смен стоек в воздухе (Ground Lock)
+            // 1. Блокировка в воздухе
             if (!player.movement.isGrounded)
             {
                 if (currentStance != EPlayerStance.STAND)
@@ -36,23 +36,21 @@ namespace AntiDropshot
                 return;
             }
 
-            // 2. Накопительный счетчик времени в приседе
+            // 2. Таймер приседа
             if (currentStance == EPlayerStance.CROUCH)
             {
                 _crouchDuration += TICK_RATE;
             }
             else if (currentStance != EPlayerStance.PRONE)
             {
-                // Если игрок встал (STAND/SPRINT) - обнуляем прогресс
                 _crouchDuration = 0f;
             }
 
-            // 3. Перехват и блокировка PRONE (Dropshot)
+            // 3. Блокировка дропшота (Prone)
             if (currentStance == EPlayerStance.PRONE)
             {
                 if (_crouchDuration < REQUIRED_CROUCH_TIME)
                 {
-                    // Игрок не выждал 3 секунды. Мгновенный возврат.
                     ForceStanceImmediate(EPlayerStance.CROUCH);
                 }
             }
@@ -63,15 +61,14 @@ namespace AntiDropshot
             if (_isCorrecting) return;
             _isCorrecting = true;
 
-            // Используем нативный метод смены стойки. 
-            // Второй аргумент 'true' заставляет сервер принудительно обновить пакет для клиента.
+            // ШАГ 1: Серверная валидация (как в вашем SuppressionSystem)
             player.stance.checkStance(target, true);
 
-            // Чтобы исключить "проскальзывание" и спам, мы принудительно обновляем 
-            // время последней смены стойки в самом движке (если доступно через поле)
-            // и фиксируем камеру игрока.
-            player.animator.halt(); // Мгновенно останавливает текущие анимации перехода
-            
+            // ШАГ 2: Мгновенное сетевое уведомление. 
+            // Это заставляет сервер разослать пакет об изменении стойки "прямо сейчас",
+            // что прерывает интерполяцию анимации на стороне клиента.
+            player.stance.askStance(target);
+
             _isCorrecting = false;
         }
 
