@@ -10,7 +10,7 @@ namespace AntiDropshot
         private float _crouchDuration = 0f;
         private bool _isCorrecting = false;
 
-        // Константы тайминга
+        // Константы тайминга (3 секунды обязательного приседа)
         private const float REQUIRED_CROUCH_TIME = 3.0f; 
         private const float TICK_RATE = 0.02f;
 
@@ -25,7 +25,7 @@ namespace AntiDropshot
 
             EPlayerStance currentStance = player.stance.stance;
 
-            // 1. Блокировка в воздухе
+            // 1. Блокировка любых действий в воздухе (Ground Lock)
             if (!player.movement.isGrounded)
             {
                 if (currentStance != EPlayerStance.STAND)
@@ -36,21 +36,23 @@ namespace AntiDropshot
                 return;
             }
 
-            // 2. Таймер приседа
+            // 2. Накопительный таймер приседа
             if (currentStance == EPlayerStance.CROUCH)
             {
                 _crouchDuration += TICK_RATE;
             }
             else if (currentStance != EPlayerStance.PRONE)
             {
+                // Сброс прогресса, если игрок встал в полный рост или побежал
                 _crouchDuration = 0f;
             }
 
-            // 3. Блокировка дропшота (Prone)
+            // 3. Жесткая блокировка PRONE (Dropshot)
             if (currentStance == EPlayerStance.PRONE)
             {
                 if (_crouchDuration < REQUIRED_CROUCH_TIME)
                 {
+                    // Игрок попытался лечь раньше времени — возвращаем в присед
                     ForceStanceImmediate(EPlayerStance.CROUCH);
                 }
             }
@@ -61,12 +63,12 @@ namespace AntiDropshot
             if (_isCorrecting) return;
             _isCorrecting = true;
 
-            // ШАГ 1: Серверная валидация (как в вашем SuppressionSystem)
+            // Метод 1: Серверная валидация (как в вашем SuppressionSystem)
             player.stance.checkStance(target, true);
 
-            // ШАГ 2: Мгновенное сетевое уведомление. 
-            // Это заставляет сервер разослать пакет об изменении стойки "прямо сейчас",
-            // что прерывает интерполяцию анимации на стороне клиента.
+            // Метод 2: Прямая сетевая команда клиенту
+            // Это заставляет сервер немедленно отправить пакет 'tellStance' игроку,
+            // что мгновенно прерывает анимацию падения на стороне клиента.
             player.stance.askStance(target);
 
             _isCorrecting = false;
