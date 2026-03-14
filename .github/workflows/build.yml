@@ -1,4 +1,4 @@
-name: Build AntiDropshot Plugin
+name: Build AntiDropshot
 
 on: [push]
 
@@ -7,22 +7,19 @@ jobs:
     runs-on: windows-2022
     steps:
     - uses: actions/checkout@v4
-
     - name: Setup NuGet
       uses: NuGet/setup-nuget@v1
-
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v2
 
-    - name: Restore NuGet Packages
+    - name: Restore
       run: nuget restore AntiDropshot.csproj
 
     - name: Build
       run: msbuild AntiDropshot.csproj /p:Configuration=Release
 
-    - name: Upload DLL
+    - name: Upload
       uses: actions/upload-artifact@v4
       with:
-        name: AntiDropshot-Package
-        # Путь теперь соответствует настройкам в .csproj
+        name: AntiDropshot-Release
         path: bin/Release/AntiDropshot.dll
