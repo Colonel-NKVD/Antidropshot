@@ -1,5 +1,6 @@
 using UnityEngine;
 using SDG.Unturned;
+using Rocket.Unturned.Player;
 
 namespace AntiDropshot
 {
@@ -14,6 +15,8 @@ namespace AntiDropshot
         {
             player = GetComponent<Player>();
             lastStance = player.stance.stance;
+            
+            // Подписка на событие изменения стойки через нативный API Unturned
             player.stance.onStanceUpdated += OnStanceUpdated;
         }
 
@@ -27,12 +30,20 @@ namespace AntiDropshot
 
         private void OnStanceUpdated()
         {
+            // Блокировка рекурсии при принудительной смене стойки плагином
             if (isProcessing) return;
 
             EPlayerStance currentStance = player.stance.stance;
             var config = AntiDropshotPlugin.Instance.Configuration.Instance;
 
-            // Логика перехода в ПРИСЯД
+            // 1. Игнорируем проверку, если игрок в воде или в транспорте (защита от багов)
+            if (currentStance == EPlayerStance.DRIVING || currentStance == EPlayerStance.SWIM)
+            {
+                lastStance = currentStance;
+                return;
+            }
+
+            // 2. Логика перехода в ПРИСЯД (Crouch)
             if (currentStance == EPlayerStance.CROUCH && IsStandingOrRunning(lastStance))
             {
                 if (player.life.stamina >= config.StaminaCostCrouch)
@@ -42,22 +53,26 @@ namespace AntiDropshot
                 }
                 else
                 {
+                    // Если стамины нет, не даем присесть (возвращаем в Stand)
                     RevertStance(EPlayerStance.STAND);
                     return;
                 }
             }
-            // Логика перехода в ПОЛОЖЕНИЕ ЛЕЖА
+            
+            // 3. Логика перехода в положение ЛЕЖА (Prone)
             else if (currentStance == EPlayerStance.PRONE)
             {
                 bool cameDirectlyFromStand = IsStandingOrRunning(lastStance);
-                bool isMacroOrTooFast = (Time.realtimeSinceStartup - lastCrouchTime) < config.ProneDelaySeconds;
+                float timeInCrouch = Time.realtimeSinceStartup - lastCrouchTime;
+                bool isTooFast = timeInCrouch < config.ProneDelaySeconds;
 
-                // Если игрок падает прямо из стойки стоя/на бегу, или не выждал паузу в приседе
-                if (cameDirectlyFromStand || (lastStance == EPlayerStance.CROUCH && isMacroOrTooFast))
+                // Защита: нельзя лечь сразу из Stand или слишком быстро после Crouch (анти-макрос)
+                if (cameDirectlyFromStand || (lastStance == EPlayerStance.CROUCH && isTooFast))
                 {
+                    // Принудительно сажаем игрока
                     RevertStance(EPlayerStance.CROUCH);
 
-                    // Если прыгнул напрямую из Stand, нужно списать стамину за пропущенный Crouch
+                    // Если это был прыжок или бег (прямой дропшот), списываем стамину за присед
                     if (cameDirectlyFromStand)
                     {
                         if (player.life.stamina >= config.StaminaCostCrouch)
@@ -67,13 +82,14 @@ namespace AntiDropshot
                         }
                         else
                         {
+                            // Если стамины совсем нет, возвращаем в полный рост
                             RevertStance(EPlayerStance.STAND);
                         }
                     }
-                    return; // Прерываем дальнейшую обработку, так как стойка изменена
+                    return;
                 }
-                // Легальный переход из приседа
-                else if (lastStance == EPlayerStance.CROUCH && !isMacroOrTooFast)
+                // Легальный переход: игрок уже сидел и выждал задержку
+                else if (lastStance == EPlayerStance.CROUCH && !isTooFast)
                 {
                     if (player.life.stamina >= config.StaminaCostProne)
                     {
@@ -81,6 +97,7 @@ namespace AntiDropshot
                     }
                     else
                     {
+                        // Недостаточно стамины чтобы лечь — оставляем сидеть
                         RevertStance(EPlayerStance.CROUCH);
                         return;
                     }
@@ -90,12 +107,19 @@ namespace AntiDropshot
             lastStance = currentStance;
         }
 
+        /// <summary>
+        /// Проверка, находится ли игрок в вертикальном положении (стоя или бег).
+        /// В Unturned прыжки также происходят в этих состояниях.
+        /// </summary>
         private bool IsStandingOrRunning(EPlayerStance stance)
         {
             return stance == EPlayerStance.STAND || 
-                   stance == EPlayerStance.SPRINT || 
+                   stance == EPlayerStance.SPRINT;
         }
 
+        /// <summary>
+        /// Безопасная принудительная смена стойки игрока сервером.
+        /// </summary>
         private void RevertStance(EPlayerStance fallbackStance)
         {
             isProcessing = true;
