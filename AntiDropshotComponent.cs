@@ -12,8 +12,8 @@ namespace AntiDropshot
         private EPlayerStance _lastValidStance;
 
         // Настройки баланса
-        private const float TRANSITION_TIME = 2.0f; // Уменьшено до 2 секунд, как просили
-        private const float STAMINA_COST = 10f;     // Используем float, так как этого требует современный метод
+        private const float TRANSITION_TIME = 2.0f; 
+        private const float STAMINA_COST = 10f;     
 
         void Awake()
         {
@@ -36,13 +36,23 @@ namespace AntiDropshot
                 return;
             }
 
-            // 2. ОПТИМИЗАЦИЯ ХОЛОСТОГО ХОДА
-            if (currentStance == _lastValidStance)
+            // 2. ФИКС СПРИНТА И ХОЛОСТОГО ХОДА
+            // Если поза не изменилась ИЛИ это переход между ходьбой и бегом — игнорируем штрафы
+            if (currentStance == _lastValidStance || 
+                (currentStance == EPlayerStance.SPRINT && _lastValidStance == EPlayerStance.STAND) ||
+                (currentStance == EPlayerStance.STAND && _lastValidStance == EPlayerStance.SPRINT))
             {
                 if (currentStance == EPlayerStance.CROUCH)
                 {
                     _crouchDuration += Time.fixedDeltaTime; 
                 }
+                else
+                {
+                    // Если игрок стоит или бежит, таймер приседа сбрасывается
+                    _crouchDuration = 0f;
+                }
+
+                _lastValidStance = currentStance;
                 return; 
             }
 
@@ -57,8 +67,8 @@ namespace AntiDropshot
                     isTransitionAllowed = false; 
                 }
             }
-            // Б) Игрок пытается встать
-            else if (currentStance == EPlayerStance.STAND)
+            // Б) Игрок пытается встать (в полный рост или сразу в бег)
+            else if (currentStance == EPlayerStance.STAND || currentStance == EPlayerStance.SPRINT)
             {
                 if (_lastValidStance == EPlayerStance.PRONE || (_lastValidStance == EPlayerStance.CROUCH && _crouchDuration < TRANSITION_TIME))
                 {
@@ -75,12 +85,13 @@ namespace AntiDropshot
             {
                 // Переход разрешен!
 
-                // 100% рабочее списание стамины для современных серверов Unturned
-                if (STAMINA_COST > 0 && player.life.stamina >= STAMINA_COST)
+                // Списываем стамину ТОЛЬКО если это не переход в спринт (защита от двойного списания)
+                if (currentStance != EPlayerStance.SPRINT && _lastValidStance != EPlayerStance.SPRINT)
                 {
-                    // Метод serverModifyStamina принимает float. 
-                    // Отрицательное значение принудительно отнимает стамину и обновляет полоску у клиента.
-                    player.life.serverModifyStamina(-STAMINA_COST); 
+                    if (STAMINA_COST > 0 && player.life.stamina >= STAMINA_COST)
+                    {
+                        player.life.serverModifyStamina(-STAMINA_COST); 
+                    }
                 }
 
                 _lastValidStance = currentStance;
