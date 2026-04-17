@@ -36,7 +36,7 @@ namespace AntiDropshot
 
             if (isExternalPlugin)
             {
-                AntiDropshotComponent comp = __instance.player.GetComponent<AntiDropshotComponent>();
+                var comp = __instance.player.GetComponent<AntiDropshotComponent>();
                 if (comp != null)
                 {
                     comp.SilentlyAcceptStance(newStance);
