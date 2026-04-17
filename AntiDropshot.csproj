@@ -17,7 +17,6 @@
     <Reference Include="UnityEngine.CoreModule"><HintPath>libs\UnityEngine.CoreModule.dll</HintPath><Private>False</Private></Reference>
     <Reference Include="UnityEngine.PhysicsModule"><HintPath>libs\UnityEngine.PhysicsModule.dll</HintPath><Private>False</Private></Reference>
     <Reference Include="com.rlabrecque.steamworks.net"><HintPath>libs\com.rlabrecque.steamworks.net.dll</HintPath><Private>False</Private></Reference>
-
     <Reference Include="0Harmony"><HintPath>libs\0Harmony.dll</HintPath><Private>False</Private></Reference>
   </ItemGroup>
 </Project>
