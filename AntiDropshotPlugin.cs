@@ -16,26 +16,18 @@ namespace AntiDropshot
         protected override void Load()
         {
             Instance = this;
-
-            // Инициализация Harmony
             _harmony = new Harmony("com.project.antidropshot");
             _harmony.PatchAll();
 
             U.Events.OnPlayerConnected += OnPlayerConnected;
-            
             Logger.Log("--- ANTIDROPSHOT v1.0 Loaded ---");
-            Logger.Log("Harmony patches applied successfully.");
         }
 
         protected override void Unload()
         {
             U.Events.OnPlayerConnected -= OnPlayerConnected;
-            
-            if (_harmony != null)
-                _harmony.UnpatchAll("com.project.antidropshot");
-            
+            if (_harmony != null) _harmony.UnpatchAll("com.project.antidropshot");
             Instance = null;
-            Logger.Log("--- ANTIDROPSHOT Unloaded ---");
         }
 
         private void OnPlayerConnected(UnturnedPlayer player)
