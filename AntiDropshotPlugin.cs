@@ -4,7 +4,7 @@ using Rocket.Unturned;
 using Rocket.Unturned.Player;
 using SDG.Unturned;
 using HarmonyLib;
-using Logger = Rocket.Core.Logging.Logger;
+using Rocket.Core.Logging;
 
 namespace AntiDropshot
 {
@@ -17,7 +17,7 @@ namespace AntiDropshot
         {
             Instance = this;
 
-            // Инициализация Harmony для работы патчей
+            // Инициализация Harmony
             _harmony = new Harmony("com.project.antidropshot");
             _harmony.PatchAll();
 
@@ -25,15 +25,14 @@ namespace AntiDropshot
             
             Logger.Log("--- ANTIDROPSHOT v1.0 Loaded ---");
             Logger.Log("Harmony patches applied successfully.");
-            Logger.Log($"Crouch Cost: {Configuration.Instance.StaminaCostCrouch} | Prone Cost: {Configuration.Instance.StaminaCostProne}");
         }
 
         protected override void Unload()
         {
             U.Events.OnPlayerConnected -= OnPlayerConnected;
             
-            // Снимаем патчи при выгрузке
-            _harmony.UnpatchAll("com.project.antidropshot");
+            if (_harmony != null)
+                _harmony.UnpatchAll("com.project.antidropshot");
             
             Instance = null;
             Logger.Log("--- ANTIDROPSHOT Unloaded ---");
@@ -41,7 +40,6 @@ namespace AntiDropshot
 
         private void OnPlayerConnected(UnturnedPlayer player)
         {
-            // Навешиваем компонент контроля стоек на каждого нового игрока
             if (player.Player.gameObject.GetComponent<AntiDropshotComponent>() == null)
             {
                 player.Player.gameObject.AddComponent<AntiDropshotComponent>();
