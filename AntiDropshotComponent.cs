@@ -10,9 +10,6 @@ namespace AntiDropshot
         private bool _isCorrecting = false;
         private EPlayerStance _lastValidStance;
 
-        private const float TRANSITION_TIME = 2.0f; 
-        private const float STAMINA_COST = 10f;     
-
         void Awake()
         {
             player = GetComponent<Player>();
@@ -23,7 +20,7 @@ namespace AntiDropshot
         {
             _lastValidStance = targetStance;
             if (targetStance == EPlayerStance.CROUCH || targetStance == EPlayerStance.PRONE)
-                _crouchDuration = TRANSITION_TIME; 
+                _crouchDuration = AntiDropshotPlugin.Instance.Configuration.Instance.TransitionTime; 
             else
                 _crouchDuration = 0f;
         }
@@ -32,6 +29,7 @@ namespace AntiDropshot
         {
             if (player == null || player.life.isDead) return;
             EPlayerStance currentStance = player.stance.stance;
+            float configTime = AntiDropshotPlugin.Instance.Configuration.Instance.TransitionTime;
 
             if (!player.movement.isGrounded)
             {
@@ -51,22 +49,23 @@ namespace AntiDropshot
                 return; 
             }
 
-            bool isTransitionAllowed = true;
+            bool isAllowed = true;
             if (currentStance == EPlayerStance.PRONE)
             {
-                if (_lastValidStance != EPlayerStance.CROUCH || _crouchDuration < TRANSITION_TIME) isTransitionAllowed = false; 
+                if (_lastValidStance != EPlayerStance.CROUCH || _crouchDuration < configTime) isAllowed = false; 
             }
             else if (currentStance == EPlayerStance.STAND || currentStance == EPlayerStance.SPRINT)
             {
-                if (_lastValidStance == EPlayerStance.PRONE || (_lastValidStance == EPlayerStance.CROUCH && _crouchDuration < TRANSITION_TIME)) isTransitionAllowed = false; 
+                if (_lastValidStance == EPlayerStance.PRONE || (_lastValidStance == EPlayerStance.CROUCH && _crouchDuration < configTime)) isAllowed = false; 
             }
 
-            if (!isTransitionAllowed) ForceStanceImmediate(EPlayerStance.CROUCH);
+            if (!isAllowed) ForceStanceImmediate(EPlayerStance.CROUCH);
             else
             {
+                float cost = AntiDropshotPlugin.Instance.Configuration.Instance.StaminaCost;
                 if (currentStance != EPlayerStance.SPRINT && _lastValidStance != EPlayerStance.SPRINT)
                 {
-                    if (STAMINA_COST > 0 && player.life.stamina >= STAMINA_COST) player.life.serverModifyStamina(-STAMINA_COST); 
+                    if (cost > 0 && player.life.stamina >= cost) player.life.serverModifyStamina(-cost); 
                 }
                 _lastValidStance = currentStance;
                 _crouchDuration = 0f; 
