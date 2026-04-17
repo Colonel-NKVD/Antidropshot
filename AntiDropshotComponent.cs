@@ -20,7 +20,7 @@ namespace AntiDropshot
         {
             _lastValidStance = targetStance;
             if (targetStance == EPlayerStance.CROUCH || targetStance == EPlayerStance.PRONE)
-                _crouchDuration = AntiDropshotPlugin.Instance.Configuration.Instance.TransitionTime; 
+                _crouchDuration = AntiDropshotPlugin.Instance.Configuration.Instance.ProneDelaySeconds; 
             else
                 _crouchDuration = 0f;
         }
@@ -29,8 +29,9 @@ namespace AntiDropshot
         {
             if (player == null || player.life.isDead) return;
             EPlayerStance currentStance = player.stance.stance;
-            float configTime = AntiDropshotPlugin.Instance.Configuration.Instance.TransitionTime;
+            var config = AntiDropshotPlugin.Instance.Configuration.Instance;
 
+            // 1. Блокировка в воздухе
             if (!player.movement.isGrounded)
             {
                 if (currentStance != EPlayerStance.STAND) ForceStanceImmediate(EPlayerStance.STAND);
@@ -39,6 +40,7 @@ namespace AntiDropshot
                 return;
             }
 
+            // 2. Игнорирование переходов без смены типа или между бегом/ходьбой
             if (currentStance == _lastValidStance || 
                 (currentStance == EPlayerStance.SPRINT && _lastValidStance == EPlayerStance.STAND) ||
                 (currentStance == EPlayerStance.STAND && _lastValidStance == EPlayerStance.SPRINT))
@@ -49,23 +51,32 @@ namespace AntiDropshot
                 return; 
             }
 
+            // 3. Проверка задержки (защита от макросов)
             bool isAllowed = true;
             if (currentStance == EPlayerStance.PRONE)
             {
-                if (_lastValidStance != EPlayerStance.CROUCH || _crouchDuration < configTime) isAllowed = false; 
+                if (_lastValidStance != EPlayerStance.CROUCH || _crouchDuration < config.ProneDelaySeconds) 
+                    isAllowed = false; 
             }
             else if (currentStance == EPlayerStance.STAND || currentStance == EPlayerStance.SPRINT)
             {
-                if (_lastValidStance == EPlayerStance.PRONE || (_lastValidStance == EPlayerStance.CROUCH && _crouchDuration < configTime)) isAllowed = false; 
+                if (_lastValidStance == EPlayerStance.PRONE || (_lastValidStance == EPlayerStance.CROUCH && _crouchDuration < config.ProneDelaySeconds)) 
+                    isAllowed = false; 
             }
 
-            if (!isAllowed) ForceStanceImmediate(EPlayerStance.CROUCH);
+            // 4. Применение санкций
+            if (!isAllowed)
+            {
+                ForceStanceImmediate(EPlayerStance.CROUCH);
+            }
             else
             {
-                float cost = AntiDropshotPlugin.Instance.Configuration.Instance.StaminaCost;
+                // Списание стамины (приведение byte к float)
+                float cost = (currentStance == EPlayerStance.PRONE) ? (float)config.StaminaCostProne : (float)config.StaminaCostCrouch;
+                
                 if (currentStance != EPlayerStance.SPRINT && _lastValidStance != EPlayerStance.SPRINT)
                 {
-                    if (cost > 0 && player.life.stamina >= cost) player.life.serverModifyStamina(-cost); 
+                    if (player.life.stamina >= cost) player.life.serverModifyStamina(-(ushort)cost); 
                 }
                 _lastValidStance = currentStance;
                 _crouchDuration = 0f; 
