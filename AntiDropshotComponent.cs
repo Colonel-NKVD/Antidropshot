@@ -1,75 +1,8 @@
 using UnityEngine;
 using SDG.Unturned;
-using HarmonyLib; 
-using System.Diagnostics;
-using Rocket.Core.Plugins; // Нужно добавить Rocket.API и Rocket.Core в ссылки
 
 namespace AntiDropshot
 {
-    // 1. ОСНОВНОЙ КЛАСС (Сердце плагина)
-    // Именно его RocketMod видит при старте сервера
-    public class AntiDropshotPlugin : RocketPlugin
-    {
-        public static AntiDropshotPlugin Instance;
-
-        protected override void Load()
-        {
-            Instance = this;
-
-            // ЗАПУСК HARMONY
-            // Без этой строки твой патч [HarmonyPatch] будет просто текстом, он не включится!
-            var harmony = new Harmony("com.project.antidropshot");
-            harmony.PatchAll(); 
-
-            Rocket.Core.Logging.Logger.Log("AntiDropshot загружен и Harmony-патчи применены!");
-        }
-
-        protected override void Unload()
-        {
-            Rocket.Core.Logging.Logger.Log("AntiDropshot выгружен.");
-            Instance = null;
-        }
-    }
-
-    // 2. ХАРМОНИ ПАТЧ (Тот самый "шпион", который смотрит, кто меняет позу)
-    [HarmonyPatch(typeof(PlayerStance), nameof(PlayerStance.checkStance))]
-    public static class PlayerStance_CheckStance_Patch
-    {
-        [HarmonyPrefix]
-        public static void Prefix(PlayerStance __instance, EPlayerStance newStance)
-        {
-            if (__instance.stance == newStance) return;
-
-            StackTrace stackTrace = new StackTrace();
-            StackFrame[] frames = stackTrace.GetFrames();
-
-            bool isExternalPlugin = false;
-            for (int i = 1; i < frames.Length; i++)
-            {
-                var method = frames[i].GetMethod();
-                if (method == null || method.DeclaringType == null) continue;
-
-                string assemblyName = method.DeclaringType.Assembly.GetName().Name;
-
-                if (assemblyName != "Assembly-CSharp" && 
-                    assemblyName != "UnityEngine.CoreModule" &&
-                    assemblyName != "Rocket.Unturned" &&
-                    assemblyName != "AntiDropshot") 
-                {
-                    isExternalPlugin = true;
-                    break;
-                }
-            }
-
-            if (isExternalPlugin)
-            {
-                var comp = __instance.player.GetComponent<AntiDropshotComponent>();
-                if (comp != null) comp.SilentlyAcceptStance(newStance);
-            }
-        }
-    }
-
-    // 3. КОМПОНЕНТ (Твоя логика, которую ты вешаешь на игрока)
     public class AntiDropshotComponent : MonoBehaviour
     {
         private Player player;
